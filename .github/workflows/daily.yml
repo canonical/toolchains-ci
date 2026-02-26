@@ -1,0 +1,46 @@
+name: .NET Daily Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        id: checkout
+        uses: actions/checkout@v6
+
+      - name: Install Required Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bash-completion, \
+            clang, \
+            cmake, \
+            git, \
+            libicu-dev, \
+            libkrb5-dev, \
+            liblttng-ust-dev, \
+            libbrotli-dev, \
+            libssl-dev, \
+            libunwind-dev, \
+            lld, \
+            llvm, \
+            locales-all, \
+            python3, \
+            rapidjson-dev, \
+            tree, \
+            zlib1g-dev
+
+      - name: Clone .NET VMR
+        run: |
+          echo "Cloning .NET VMR..."
+          git clone --depth 1 --branch main https://github.com/dotnet/dotnet.git dotnet-vmr
+
+      - name: Build .NET
+        id: build
+        run: |
+          python3 build_dotnet.py --repo-root dotnet-vmr
+
