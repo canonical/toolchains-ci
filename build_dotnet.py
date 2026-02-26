@@ -57,7 +57,7 @@ def main():
     # Run build script
     build_cmd = f"""./build.sh \\
         --configuration Release \\
-        --verbosity diagnostic \\
+        --verbosity detailed \\
         --official-build-id {build_id} \\
         --source-build \\
         --ci \\
