@@ -42,6 +42,7 @@ jobs:
           apt-get install -y \
             bash-completion \
             clang \
+            curl \
             cmake \
             git \
             libicu-dev \
