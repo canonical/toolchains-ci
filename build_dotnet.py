@@ -57,7 +57,7 @@ def main():
     if dotnet_version < 9:
         prep_script = "./prep.sh"
     else:
-        prep_script = "./prep-source-build.sh"
+        prep_script = "./prep-source-build.sh --no-binary-removal"
 
     # Run prep script
     print(f"\n=== Running {prep_script} ===", flush=True)
