@@ -6,11 +6,32 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 240
 
+    strategy:
+      fail-fast: false
+      matrix:
+        container_image:
+          - docker.io/library/ubuntu:22.04
+          - docker.io/library/ubuntu:24.04
+          - docker.io/library/ubuntu:25.10
+          - docker.io/library/ubuntu:26.04
+        branch:
+          - main
+          - release/8.0.1xx
+          - release/9.0.1xx
+          - release/10.0.1xx
+    container:
+      image: ${{ matrix.container_image }}
+      options: --security-opt seccomp=unconfined
+      env:
+        DEBIAN_FRONTEND: noninteractive
     steps:
-      - name: Checkout
-        id: checkout
+      - name: Checkout Repository
         uses: actions/checkout@v6
+
+      - name: Enable -proposed
+        run: sudo python3 enable_proposed.py
 
       - name: Install Required Packages
         run: |
@@ -37,10 +58,26 @@ jobs:
       - name: Clone .NET VMR
         run: |
           echo "Cloning .NET VMR..."
-          git clone --depth 1 --branch main https://github.com/dotnet/dotnet.git dotnet-vmr
+          git clone --depth 1 --branch ${{ matrix.branch }} https://github.com/dotnet/dotnet.git dotnet-vmr
 
       - name: Build .NET
         id: build
+        continue-on-error: true
         run: |
-          python3 build_dotnet.py --repo-root dotnet-vmr
+          # Extract major version from branch name
+          BRANCH="${{ matrix.branch }}"
+          if [[ "$BRANCH" == "main" ]]; then
+            DOTNET_VERSION=11
+          else
+            DOTNET_VERSION=$(echo "$BRANCH" | grep -oP 'release/\K\d+' || echo "11")
+          fi
+          echo "Building .NET ${DOTNET_VERSION} from branch ${BRANCH}..."
+          python3 build_dotnet.py --repo-root dotnet-vmr --dotnet-version "$DOTNET_VERSION"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dotnet-build-artifacts-${{ github.run_id }}
+          path: dotnet-vmr/artifacts/
+          retention-days: 7
 

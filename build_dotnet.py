@@ -36,26 +36,49 @@ def main():
         required=True,
         help="Path to the root of the dotnet repository"
     )
+    parser.add_argument(
+        "--dotnet-version",
+        type=int,
+        required=True,
+        help="Major .NET version being built (e.g., 8, 9, 10)"
+    )
     args = parser.parse_args()
 
     dotnet_path = Path(args.repo_root).resolve()
+    dotnet_version = args.dotnet_version
 
     if not dotnet_path.exists():
         print(f"Error: Path does not exist: {dotnet_path}", flush=True)
         sys.exit(1)
 
-    print(f"Building .NET VMR at: {dotnet_path}", flush=True)
+    print(f"Building .NET {dotnet_version} VMR at: {dotnet_path}", flush=True)
+
+    # Determine which prep script to use
+    if dotnet_version < 9:
+        prep_script = "./prep.sh"
+    else:
+        prep_script = "./prep-source-build.sh"
 
     # Run prep script
-    print("\n=== Running prep-source-build.sh ===", flush=True)
-    run_command("./prep-source-build.sh", cwd=dotnet_path)
+    print(f"\n=== Running {prep_script} ===", flush=True)
+    run_command(prep_script, cwd=dotnet_path)
 
     # Generate build ID with current date
     build_id = f"{datetime.now().strftime('%Y%m%d')}.1"
     print(f"\n=== Building with ID: {build_id} ===", flush=True)
 
-    # Run build script
-    build_cmd = f"""./build.sh \\
+    # Build command flags based on version
+    if dotnet_version == 8:
+        build_cmd = "./build.sh --clean-while-building"
+    elif dotnet_version == 9:
+        build_cmd = """./build.sh \\
+        --configuration Release \\
+        --verbosity detailed \\
+        --source-build \\
+        --ci \\
+        --clean-while-building"""
+    else:
+        build_cmd = f"""./build.sh \\
         --configuration Release \\
         --verbosity detailed \\
         --official-build-id {build_id} \\
