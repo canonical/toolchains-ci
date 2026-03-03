@@ -34,7 +34,7 @@ def uses_deb822_format():
     return sources_list_d.is_dir() and ubuntu_sources.is_file()
 
 
-def enable_proposed_deb822(codename):
+def enable_proposed_deb822(codename: str):
     """Enable -proposed pocket using DEB822 format."""
     print("Using DEB822 format (Ubuntu 24.04+)")
 
@@ -59,7 +59,7 @@ Pin-Priority: 990
         f.write(preferences_content)
 
 
-def enable_proposed_traditional(codename):
+def enable_proposed_traditional(codename: str):
     """Enable -proposed pocket using traditional sources.list format."""
     print("Using traditional sources.list format (Ubuntu < 24.04)")
 

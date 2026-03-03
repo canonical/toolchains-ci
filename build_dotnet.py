@@ -3,13 +3,16 @@
 Build script for .NET VMR
 """
 import argparse
+import glob
+import os
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
+DOTNET_DEVEL_VERSION = 11  # Update this as needed for future versions
 
-def run_command(cmd, cwd):
+def run_command(cmd: str, cwd: Path | None) -> subprocess.CompletedProcess[bytes]:
     """Run a shell command and handle errors"""
     print(f"Running: {cmd}", flush=True)
     result = subprocess.run(
@@ -22,6 +25,96 @@ def run_command(cmd, cwd):
         print(f"Error: Command failed with exit code {result.returncode}", flush=True)
         sys.exit(result.returncode)
     return result
+
+
+def get_current_ubuntu_version() -> str:
+    """Get the current Ubuntu version as a string (e.g., 20.04 -> 20.04)"""
+    try:
+        with open("/etc/os-release") as f:
+            for line in f:
+                if line.startswith("VERSION_ID="):
+                    version_str = line.split("=")[1].strip().strip('"')
+                    return version_str
+    except Exception as e:
+        print(f"Error reading Ubuntu version: {e}", flush=True)
+        sys.exit(1)
+    print("Could not determine Ubuntu version", flush=True)
+    sys.exit(1)
+
+
+def install_previous_dotnet(dotnet_version: int, dotnet_vmr_root: Path):
+    """Install the previous version of .NET if needed"""
+    if dotnet_version <= DOTNET_DEVEL_VERSION:
+        current_ubuntu_version = get_current_ubuntu_version()
+        if current_ubuntu_version in ["22.04", "24.04", "26.04"]:
+            # Add backports PPA for older versions of .NET on newer Ubuntu releases
+            print(f"""Adding backports PPA for .NET {dotnet_version} on
+                   Ubuntu {current_ubuntu_version}...""", flush=True)
+            run_command("add-apt-repository -y ppa:dotnet/backports", cwd=Path.home())
+
+        print("Installing .NET SDK for source-build...", flush=True)
+        install_cmd = f"""apt-get update && apt-get install -y dotnet-sdk-{dotnet_version}.0 \\
+                dotnet-sdk-{dotnet_version}.0-source-built-artifacts"""
+        run_command(install_cmd, cwd=Path.home())
+    else:
+        prep_script = "./prep-source-build.sh --no-binary-removal"
+        # Run prep script
+        print(f"\n=== Running {prep_script} ===", flush=True)
+        run_command(prep_script, cwd=dotnet_vmr_root)
+
+
+def prepare_previously_source_built_artifacts(dotnet_version: int, dotnet_vmr_root: Path):
+    """Prepare previously source-built artifacts for the build"""
+    if dotnet_version < DOTNET_DEVEL_VERSION:
+        dotnet_prereqs_packages_dir = Path(f"{dotnet_vmr_root}/prereqs/packages/archive").resolve()
+        if not dotnet_prereqs_packages_dir.exists():
+            print(f"Error: Prerequisites packages directory does not exist: {dotnet_prereqs_packages_dir}", flush=True)
+            sys.exit(1)
+
+        dotnet_root_dir = Path("/usr/lib/dotnet").resolve()
+        pattern = os.path.join(
+            dotnet_root_dir,
+            "source-built-artifacts",
+            f"Private.SourceBuilt.Artifacts.{dotnet_version}.0.*.tar.gz",
+        )
+        artifacts_tarball = glob.glob(pattern)
+        if not artifacts_tarball:
+            print(f"Error: No source-built artifacts found for .NET {dotnet_version} at {pattern}", flush=True)
+            sys.exit(1)
+        if len(artifacts_tarball) > 1:
+            print(f"Error: Multiple source-built artifacts found for .NET {dotnet_version} at {pattern}", flush=True)
+            sys.exit(1)
+        print(f"Copying source-built artifacts from {artifacts_tarball[0]}...", flush=True)
+
+        # Link prereqs tarball to the expected location in the VMR
+        run_command(f"ln --symbolic {artifacts_tarball[0]} {dotnet_prereqs_packages_dir}", cwd=dotnet_vmr_root)
+
+        # Copy .NET SDK to the VMR
+        run_command(f"""cp --recursive --dereference --preserve=mode,ownership,timestamps \\
+                    {dotnet_root_dir} {dotnet_vmr_root}/previously-built-dotnet""", cwd=dotnet_vmr_root)
+
+
+def build_cmd(dotnet_vmr_root: Path, dotnet_version: int, build_id: str) -> str:
+    """Construct the build command for the .NET VMR"""
+    # Start with .NET 8 baseline
+    cmd = [
+        "./build.sh",
+        "--clean-while-building",
+        f"--with-sdk {dotnet_vmr_root}/previously-built-dotnet"]
+
+    # For .NET 9 and above, add more parameters
+    if dotnet_version >= 9:
+        cmd.insert(1, "--ci")
+        cmd.insert(1, "--source-only")
+        cmd.insert(1, "--verbosity normal")
+        cmd.insert(1, "--configuration Release")
+
+    # For .NET 10 and above, add official build id
+    if dotnet_version >= 10:
+        cmd.insert(1, f"--official-build-id {build_id}")
+
+    # Join with line continuation for readability
+    return " \\\n    ".join(cmd)
 
 
 def main():
@@ -44,49 +137,24 @@ def main():
     )
     args = parser.parse_args()
 
-    dotnet_path = Path(args.repo_root).resolve()
+    dotnet_vmr_root = Path(args.repo_root).resolve()
     dotnet_version = args.dotnet_version
 
-    if not dotnet_path.exists():
-        print(f"Error: Path does not exist: {dotnet_path}", flush=True)
+    if not dotnet_vmr_root.exists():
+        print(f"Error: Path does not exist: {dotnet_vmr_root}", flush=True)
         sys.exit(1)
 
-    print(f"Building .NET {dotnet_version} VMR at: {dotnet_path}", flush=True)
+    install_previous_dotnet(dotnet_version, dotnet_vmr_root)
 
-    # Determine which prep script to use
-    if dotnet_version < 9:
-        prep_script = "./prep.sh"
-    else:
-        prep_script = "./prep-source-build.sh --no-binary-removal"
+    prepare_previously_source_built_artifacts(dotnet_version, dotnet_vmr_root)
 
-    # Run prep script
-    print(f"\n=== Running {prep_script} ===", flush=True)
-    run_command(prep_script, cwd=dotnet_path)
+    print(f"Building .NET {dotnet_version} VMR at: {dotnet_vmr_root}", flush=True)
 
     # Generate build ID with current date
     build_id = f"{datetime.now().strftime('%Y%m%d')}.1"
     print(f"\n=== Building with ID: {build_id} ===", flush=True)
 
-    # Build command flags based on version
-    if dotnet_version == 8:
-        build_cmd = "./build.sh --clean-while-building"
-    elif dotnet_version == 9:
-        build_cmd = """./build.sh \\
-        --configuration Release \\
-        --verbosity normal \\
-        --source-build \\
-        --ci \\
-        --clean-while-building"""
-    else:
-        build_cmd = f"""./build.sh \\
-        --configuration Release \\
-        --verbosity detailed \\
-        --official-build-id {build_id} \\
-        --source-build \\
-        --ci \\
-        --clean-while-building"""
-
-    run_command(build_cmd, cwd=dotnet_path)
+    run_command(build_cmd(dotnet_vmr_root, dotnet_version, build_id), cwd=dotnet_vmr_root)
 
     print("\n=== Build completed successfully! ===", flush=True)
 
