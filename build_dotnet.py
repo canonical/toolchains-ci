@@ -99,25 +99,36 @@ def build_cmd(dotnet_vmr_root: Path, dotnet_version: int, build_id: str) -> str:
     # Start with .NET 8 baseline
     cmd = [
         "./build.sh",
-        "--clean-while-building",
-        f"--with-sdk {dotnet_vmr_root}/previously-built-dotnet"]
+        "--clean-while-building"]
 
     # For .NET 9 and above, add more parameters
     if dotnet_version >= 9:
-        cmd.insert(1, "--ci")
-        cmd.insert(1, "--source-only")
-        cmd.insert(1, "--verbosity normal")
-        cmd.insert(1, "--configuration Release")
+        cmd.append("--ci")
+        cmd.append("--source-only")
+        cmd.append("--verbosity normal")
+        cmd.append("--configuration Release")
 
     # For .NET 10 and above, add official build id
     if dotnet_version >= 10:
-        cmd.insert(1, f"--official-build-id {build_id}")
+        cmd.append(f"--official-build-id {build_id}")
+
+    # If not devel, use previously built .NET SDK
+    if dotnet_version < DOTNET_DEVEL_VERSION:
+        cmd.append(f"--with-sdk {dotnet_vmr_root}/previously-built-dotnet")
 
     # Additional MSBuild parameters:
     # Binary scan is failing on the CI with "An error occurred trying to start process
     # 'file' with working directory '/__w/dotnet-ci/dotnet-ci/dotnet-vmr/eng'.
     # No such file or directory" error, so we will skip it for now.
-    cmd.insert(1, "/p:SkipBinaryScan=true")
+    msbuild_params = [
+        "/p:SkipPortableRuntimeBuild=true",
+        "/p:ContinueOnPrebuiltBaselineError=true",
+        "/p:SkipBinaryScan=true",
+    ]
+
+    if len(msbuild_params) > 0:
+        cmd.append("--")
+        cmd.extend(msbuild_params)
 
     # Join with line continuation for readability
     return " \\\n    ".join(cmd)
