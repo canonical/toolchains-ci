@@ -30,7 +30,7 @@ def run_command(cmd: str, cwd: Path | None) -> subprocess.CompletedProcess[bytes
 def get_current_ubuntu_version() -> str:
     """Get the current Ubuntu version as a string (e.g., 20.04 -> 20.04)"""
     try:
-        with open("/etc/os-release") as f:
+        with open("/etc/os-release", encoding="utf-8") as f:
             for line in f:
                 if line.startswith("VERSION_ID="):
                     version_str = line.split("=")[1].strip().strip('"')
