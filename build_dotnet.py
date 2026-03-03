@@ -44,7 +44,7 @@ def get_current_ubuntu_version() -> str:
 
 def install_previous_dotnet(dotnet_version: int, dotnet_vmr_root: Path):
     """Install the previous version of .NET if needed"""
-    if dotnet_version <= DOTNET_DEVEL_VERSION:
+    if dotnet_version < DOTNET_DEVEL_VERSION:
         current_ubuntu_version = get_current_ubuntu_version()
         if current_ubuntu_version in ["22.04", "24.04", "26.04"]:
             # Add backports PPA for older versions of .NET on newer Ubuntu releases
