@@ -123,6 +123,10 @@ def build_cmd(dotnet_vmr_root: Path, dotnet_version: int, build_id: str) -> str:
         # 'file' with working directory '/__w/dotnet-ci/dotnet-ci/dotnet-vmr/eng'.
         # No such file or directory" error, so we will skip it for now.
         "/p:SkipBinaryScan=true",
+        # Skipping binary publishing because of error: Could not copy the file
+        # "/__w/dotnet-ci/dotnet-ci/dotnet-vmr/artifacts/log/Release/binary-report/NewBinaries.txt"
+        # because it was not found.
+        "/p:SkipDetectBinaries=true",
     ]
 
     if len(msbuild_params) > 0:
