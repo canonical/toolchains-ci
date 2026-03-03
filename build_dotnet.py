@@ -113,6 +113,12 @@ def build_cmd(dotnet_vmr_root: Path, dotnet_version: int, build_id: str) -> str:
     if dotnet_version >= 10:
         cmd.insert(1, f"--official-build-id {build_id}")
 
+    # Additional MSBuild parameters:
+    # Binary scan is failing on the CI with "An error occurred trying to start process
+    # 'file' with working directory '/__w/dotnet-ci/dotnet-ci/dotnet-vmr/eng'.
+    # No such file or directory" error, so we will skip it for now.
+    cmd.insert(1, "/p:SkipBinaryScan=true")
+
     # Join with line continuation for readability
     return " \\\n    ".join(cmd)
 
