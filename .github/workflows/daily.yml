@@ -41,6 +41,7 @@ jobs:
           apt-get update
           apt-get install -y \
             bash-completion \
+            build-essential \
             clang \
             curl \
             cmake \
@@ -54,6 +55,7 @@ jobs:
             lld \
             llvm \
             locales-all \
+            ninja-build \
             python3 \
             rapidjson-dev \
             software-properties-common \
