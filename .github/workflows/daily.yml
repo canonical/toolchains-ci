@@ -96,7 +96,27 @@ jobs:
 
       - name: Check for OOM Kills
         if: failure() || cancelled()
-        run: sudo dmesg -T | grep -i oom
+        run: |
+          echo "=== Container Memory Events ==="
+          if [ -f /sys/fs/cgroup/memory.events ]; then
+            cat /sys/fs/cgroup/memory.events
+
+            # Extract the oom_kill count
+            OOM_KILLS=$(grep oom_kill /sys/fs/cgroup/memory.events | awk '{print $2}')
+
+            if [ -n "$OOM_KILLS" ] && [ "$OOM_KILLS" -gt 0 ]; then
+              echo "::error:: OOM Kill detected! The container ran out of memory."
+              exit 1
+            else
+              echo "No OOM kills recorded in cgroup."
+            fi
+          else
+            echo "cgroup v2 memory.events file not found. Runner might be using cgroup v1."
+            # Fallback for cgroup v1 just in case
+            if [ -f /sys/fs/cgroup/memory/memory.oom_control ]; then
+               cat /sys/fs/cgroup/memory/memory.oom_control
+            fi
+          fi
 
       - name: Upload Build Artifacts
         if: always()
