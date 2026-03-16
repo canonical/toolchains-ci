@@ -96,7 +96,7 @@ jobs:
 
       - name: Check for OOM Kills
         if: failure() || cancelled()
-        run: dmesg -T | grep -i oom
+        run: sudo dmesg -T | grep -i oom
 
       - name: Upload Build Artifacts
         if: always()
