@@ -127,6 +127,10 @@ def build_cmd(dotnet_vmr_root: Path, dotnet_version: int, build_id: str) -> str:
         # "/__w/dotnet-ci/dotnet-ci/dotnet-vmr/artifacts/log/Release/binary-report/NewBinaries.txt"
         # because it was not found.
         "/p:SkipDetectBinaries=true",
+        # Disabling shared compilation to avoid potential issues with compiler server in CI
+        # environment where build hangs indefinitely waiting on a compiler shutdown that never
+        # happens.
+        "/p:UseSharedCompilation=false",
     ]
 
     if len(msbuild_params) > 0:

@@ -88,12 +88,15 @@ jobs:
         id: build
         env:
           MSBUILDDISABLENODEREUSE: 1
-          UseSharedCompilation: false
         run: |
           DOTNET_VERSION="${{ steps.metadata.outputs.dotnet_version }}"
           BRANCH="${{ matrix.branch }}"
           echo "Building .NET ${DOTNET_VERSION} from branch ${BRANCH}..."
           python3 build_dotnet.py --repo-root dotnet-vmr --dotnet-version "$DOTNET_VERSION"
+
+      - name: Check for OOM Kills
+        if: failure() || cancelled()
+        run: dmesg -T | grep -i oom
 
       - name: Upload Build Artifacts
         if: always()
