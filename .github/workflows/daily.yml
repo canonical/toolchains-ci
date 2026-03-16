@@ -91,12 +91,6 @@ jobs:
         run: |
           DOTNET_VERSION="${{ steps.metadata.outputs.dotnet_version }}"
           BRANCH="${{ matrix.branch }}"
-
-          echo "Recursively patching ALL VMR sub-repositories to disable persistent compiler nodes..."
-          # Find every targets/props file in the entire tree and inject the flags before the closing tag
-          find dotnet-vmr -type f \( -name "Directory.Build.targets" -o -name "Directory.Build.props" \) \
-            -exec sed -i 's|</Project>|<PropertyGroup><UseSharedCompilation>false</UseSharedCompilation><UseRazorBuildServer>false</UseRazorBuildServer></PropertyGroup></Project>|' {} +
-
           echo "Building .NET ${DOTNET_VERSION} from branch ${BRANCH}..."
           python3 build_dotnet.py --repo-root dotnet-vmr --dotnet-version "$DOTNET_VERSION"
 
