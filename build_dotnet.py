@@ -168,22 +168,22 @@ def main():
 
     prepare_previously_source_built_artifacts(dotnet_version, dotnet_vmr_root)
 
-#     # ===================================================================
-#     # Create a global MSBuild override file to prevent compiler deadlocks
-#     # ===================================================================
-#     override_file = Path("/tmp/disable-nodes.targets")
-#     with open(override_file, "w", encoding="utf-8") as f:
-#         f.write("""<Project>
-#   <PropertyGroup>
-#     <UseSharedCompilation>false</UseSharedCompilation>
-#     <UseRazorBuildServer>false</UseRazorBuildServer>
-#   </PropertyGroup>
-# </Project>""")
+    # ===================================================================
+    # Create a global MSBuild override file to prevent compiler deadlocks
+    # ===================================================================
+    override_file = Path("/tmp/disable-nodes.targets")
+    with open(override_file, "w", encoding="utf-8") as f:
+        f.write("""<Project>
+  <PropertyGroup>
+    <UseSharedCompilation>false</UseSharedCompilation>
+    <UseRazorBuildServer>false</UseRazorBuildServer>
+  </PropertyGroup>
+</Project>""")
 
-#     # Instruct ALL nested MSBuild processes to implicitly import this file
-#     os.environ["CustomAfterMicrosoftCommonTargets"] = str(override_file)
-#     os.environ["CustomAfterMicrosoftCommonCrossTargetingTargets"] = str(override_file)
-#     # ===================================================================
+    # Instruct ALL nested MSBuild processes to implicitly import this file
+    os.environ["CustomAfterMicrosoftCommonTargets"] = str(override_file)
+    os.environ["CustomAfterMicrosoftCommonCrossTargetingTargets"] = str(override_file)
+    # ===================================================================
 
     print(f"Building .NET {dotnet_version} VMR at: {dotnet_vmr_root}", flush=True)
 
