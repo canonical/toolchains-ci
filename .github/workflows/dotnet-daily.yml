@@ -214,7 +214,8 @@ jobs:
           echo "Found SDK: $SDK_TAR"
           mkdir -p /opt/dotnet
           tar -xzf "$SDK_TAR" -C /opt/dotnet
-          /opt/dotnet/dotnet --info
+          ln --force --symbolic --relative /opt/dotnet/dotnet /usr/bin/dotnet
+          dotnet --info
 
       - name: Download test runner
         run: |
@@ -232,9 +233,9 @@ jobs:
           chown --recursive testrunner:testrunner /home/testrunner/
           mkdir TestResults
           echo "Turkey version:"
-          /opt/dotnet/dotnet turkey/Turkey.dll --version
+          dotnet turkey/Turkey.dll --version
           echo "Running tests with .NET ${{ matrix.dotnet_version }} on ${{ matrix.container_image }}"
-          /opt/dotnet/dotnet turkey/Turkey.dll -v --timeout 600 --log-directory TestResults --trait github-ci
+          dotnet turkey/Turkey.dll -v --timeout 600 --log-directory TestResults --trait github-ci
 
       - name: Upload Test Results
         if: always()
