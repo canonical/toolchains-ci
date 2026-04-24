@@ -29,6 +29,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
 
+      - name: Install pending updates
+        run: apt-get update && apt-get upgrade -y
+
       - name: Install Python
         run: apt-get update && apt-get install -y python3
 
