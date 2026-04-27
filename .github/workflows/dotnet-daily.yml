@@ -228,6 +228,8 @@ jobs:
           tar xf turkey.tar.gz
 
       - name: Run tests
+        env:
+          DOTNET_ROOT: /opt/dotnet
         run: |
           set -euo pipefail
           cd dotnet-regular-tests
