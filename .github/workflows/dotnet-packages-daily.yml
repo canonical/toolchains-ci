@@ -39,7 +39,7 @@ jobs:
           verbosity: verbose
 
       - name: Install flamenco
-        run: sudo snap install --dangerous flamenco/flamenco_*.snap
+        run: sudo snap install --dangerous --devmode flamenco/flamenco_*.snap
       # End of temporary steps for flamenco.
       # -------------------------------------------------------------------------------------------------
 
