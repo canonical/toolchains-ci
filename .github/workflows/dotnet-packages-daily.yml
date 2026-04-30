@@ -12,11 +12,28 @@ jobs:
         shell: bash
 
     steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v6
+        with:
+          path: toolchains-ci
+
       - name: Checkout dotnet-source-build repository
         uses: actions/checkout@v6
         with:
           repository: canonical/dotnet-source-build
           path: dotnet-source-build
+
+      - name: Checkout dotnet/dotnet for version detection
+        uses: actions/checkout@v6
+        with:
+          repository: dotnet/dotnet
+          ref: release/10.0.1xx
+          sparse-checkout: |
+            src/sdk/eng/Versions.props
+            src/runtime/eng/Versions.props
+          sparse-checkout-cone-mode: false
+          fetch-depth: 1
+          path: dotnet-dotnet
 
       # -------------------------------------------------------------------------------------------------
       # This is only temporary while https://github.com/canonical/flamenco/pull/9 is reviewed and merged.
@@ -46,30 +63,21 @@ jobs:
       - name: Derive build ID and source version
         id: derive-versions
         run: |
-          # Extract the upstream version from the top-most changelog entry.
-          # dpkg-parsechangelog outputs e.g. "10.0.107-10.0.7-0ubuntu1~24.04.1"
+          # Read the version directly from the dotnet/dotnet source tree.
+          # For a release branch, the script returns e.g. "10.0.107-10.0.7-0ubuntu1".
+          SCRIPT_VERSION=$(python3 toolchains-ci/dotnet/get_version.py \
+            --repo-root dotnet-dotnet \
+            --product ubuntu-source-package)
+
+          # Strip the -0ubuntu1 suffix to get the upstream portion (e.g. "10.0.107-10.0.7"),
+          # which is what build-orig-tarball and dch expect as source-version.
+          SOURCE_VERSION="${SCRIPT_VERSION%%-0ubuntu*}"
+
           CHANGELOG_VERSION=$(dpkg-parsechangelog \
             --file dotnet-source-build/src/changelog.dotnet10.noble \
             --show-field Version \
             --count 1)
 
-          # Strip the Debian/Ubuntu suffix (-0ubuntu1~...) to get "10.0.107-10.0.7"
-          UPSTREAM_VERSION="${CHANGELOG_VERSION%%-0ubuntu*}"
-
-          # Split into SDK (e.g. 10.0.107) and Runtime (e.g. 10.0.7)
-          SDK_VERSION="${UPSTREAM_VERSION%%-*}"
-          RUNTIME_VERSION="${UPSTREAM_VERSION##*-}"
-
-          # Increment the patch component of each
-          SDK_PREFIX="${SDK_VERSION%.*}"
-          SDK_PATCH="${SDK_VERSION##*.}"
-          NEW_SDK_VERSION="${SDK_PREFIX}.$((SDK_PATCH + 1))"
-
-          RT_PREFIX="${RUNTIME_VERSION%.*}"
-          RT_PATCH="${RUNTIME_VERSION##*.}"
-          NEW_RT_VERSION="${RT_PREFIX}.$((RT_PATCH + 1))"
-
-          SOURCE_VERSION="${NEW_SDK_VERSION}-${NEW_RT_VERSION}"
           BUILD_ID="$(date -u +%Y%m%d).1"
 
           echo "source-version=${SOURCE_VERSION}" >> "$GITHUB_OUTPUT"
@@ -77,10 +85,19 @@ jobs:
           echo "Derived source-version: ${SOURCE_VERSION}"
           echo "Derived build-id: ${BUILD_ID}"
 
+          FULL_NEW_VERSION="${SOURCE_VERSION}-0ubuntu1~24.04.1"
+          if dpkg --compare-versions "${FULL_NEW_VERSION}" eq "${CHANGELOG_VERSION}"; then
+            echo "Version ${SOURCE_VERSION} already at top of changelog, skipping update."
+            echo "version-changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "version-changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install devscripts
         run: sudo apt-get install -y devscripts
 
       - name: Update changelog
+        if: steps.derive-versions.outputs.version-changed == 'true'
         env:
           DEBFULLNAME: Ubuntu Toolchains CI
           DEBEMAIL: noreply@canonical.com
