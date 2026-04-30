@@ -188,7 +188,11 @@ jobs:
 
           # Create .sbuildrc file
           cp dotnet/sbuildrc.pl ${HOME}/.sbuildrc
-          mkdir -p ${HOME}/sbuild/{build,logs,stats}
+          mkdir -p ${HOME}/sbuild/{build,logs,stats,scratch}
+
+          # Set up schroot's fstab configuration in the runner
+          echo "/home/runner /home/runner none rw,bind 0 0" | sudo tee /etc/schroot/sbuild/fstab
+          echo "/home/runner/sbuild/scratch /scratch none rw,bind 0 0" | sudo tee -a /etc/schroot/sbuild/fstab
 
           # Add runner to the sbuild group and set up the schroot.
           sudo usermod -aG sbuild $USER
