@@ -183,7 +183,7 @@ jobs:
 
   build-source-package:
     name: Build .NET source package
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, linux, x64, noble, xlarge ]
     needs: prepare-source-package
     strategy:
       fail-fast: false
