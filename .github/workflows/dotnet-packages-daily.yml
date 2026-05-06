@@ -246,7 +246,10 @@ jobs:
 
       - name: Build source package
         run: |
-          sg sbuild -c 'sbuild --verbose --dist=${{ matrix.ubuntu-release }} ${{ github.workspace }}/${{ matrix.dotnet-source-packages }}_*.dsc'
+          sg sbuild -c \
+            "sbuild \
+            --extra-repository='deb [trusted=yes] http://ppa.launchpadcontent.net/dotnet/backports/ubuntu ${{ matrix.ubuntu-release }} main' \
+            --verbose --dist=${{ matrix.ubuntu-release }} ${{ github.workspace }}/${{ matrix.dotnet-source-packages }}_*.dsc"
 
       - name: List generated files
         run: |
