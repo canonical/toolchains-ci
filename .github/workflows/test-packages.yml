@@ -28,7 +28,7 @@ jobs:
       - name: Install test prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install --yes autopkgtest qemu-system-x86 tree
+          sudo apt-get install --yes autopkgtest qemu-system-x86 genisoimage distro-info tree
 
       - name: Grant KVM permissions
         run: sudo usermod -aG kvm $USER
