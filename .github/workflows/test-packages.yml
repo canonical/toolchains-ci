@@ -5,14 +5,28 @@ on:
 
 jobs:
   test-source-package:
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, linux, x64, noble, xlarge ]
+    strategy:
+      fail-fast: false
+      matrix:
+        ubuntu-release:
+          - "resolute"
+          - "questing"
+          - "noble"
+        dotnet-source-packages:
+          - "dotnet10"
+          - "dotnet9"
+          - "dotnet8"
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Download source package artifact
         id: download-source-package
         uses: actions/download-artifact@v8
         with:
-          name: dotnet10-noble-source-package
+          name: ${{ matrix.dotnet-source-packages }}-${{ matrix.ubuntu-release }}-source-package
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: canonical/toolchains-ci
           run-id: 25559835608
@@ -21,7 +35,7 @@ jobs:
         id: download-binary-packages
         uses: actions/download-artifact@v8
         with:
-          name: dotnet10-noble-deb-packages
+          name: ${{ matrix.dotnet-source-packages }}-${{ matrix.ubuntu-release }}-deb-packages
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: canonical/toolchains-ci
           run-id: 25521962889
@@ -37,7 +51,7 @@ jobs:
       - name: Build autopkgtest runner image
         run: |
           autopkgtest-buildvm-ubuntu-cloud \
-            --release noble \
+            --release ${{ matrix.ubuntu-release }} \
             --verbose \
             --cpus $(nproc) \
             --output ${{ github.workspace }}
@@ -56,5 +70,5 @@ jobs:
             --env=REGULAR_TESTS_IGNORE_NU1102_ERRORS=1 --env=REGULAR_TESTS_TOOLCHAINS_CI=1 \
             --copy=${{ steps.download-binary-packages.outputs.download-path }}:/home/ubuntu/dotnet-packages \
             --setup-commands="sudo apt-get install --yes /home/ubuntu/dotnet-packages/*.deb" \
-            ${{ steps.download-source-package.outputs.download-path }}/dotnet10_*.dsc -- \
-              qemu -c $(nproc) ${{ github.workspace }}/autopkgtest-noble-amd64.img
+            ${{ steps.download-source-package.outputs.download-path }}/${{ matrix.dotnet-source-packages }}_*.dsc -- \
+              qemu -c $(nproc) ${{ github.workspace }}/autopkgtest-${{ matrix.ubuntu-release }}-amd64.img
