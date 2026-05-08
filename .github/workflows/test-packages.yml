@@ -9,6 +9,7 @@ jobs:
 
     steps:
       - name: Download source package artifact
+        id: download-source-package
         uses: actions/download-artifact@v8
         with:
           name: dotnet10-noble-source-package
@@ -46,11 +47,14 @@ jobs:
           echo "Binary packages download path content:"
           tree ${{ steps.download-binary-packages.outputs.download-path }}
 
+          echo "Source package download path content:"
+          tree ${{ steps.download-source-package.outputs.download-path }}
+
           autopkgtest \
             --no-built-binaries \
             --apt-upgrade \
             --env=REGULAR_TESTS_IGNORE_NU1102_ERRORS=1 --env=REGULAR_TESTS_TOOLCHAINS_CI=1 \
             --copy=${{ steps.download-binary-packages.outputs.download-path }}:/home/ubuntu/dotnet-packages \
             --setup-commands="sudo apt-get install --yes /home/ubuntu/dotnet-packages/*.deb" \
-            dotnet10_10.0.109-10.0.9-0ubuntu1~24.04.1.dsc -- \
+            ${{ steps.download-source-package.outputs.download-path }}/dotnet10_*.dsc -- \
               qemu -c $(nproc) ${{ github.workspace }}/autopkgtest-noble-amd64.img
