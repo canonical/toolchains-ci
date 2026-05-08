@@ -1,0 +1,44 @@
+name: Test .NET Packages
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-source-package:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download source package artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dotnet10-noble-source-package
+          repository: canonical/toolchains-ci
+          run-id: 25559835608
+
+      - name: Download binary packages artifact
+        id: download-binary-packages
+        uses: actions/download-artifact@v8
+        with:
+          name: dotnet10-noble-deb-packages
+          repository: canonical/toolchains-ci
+          run-id: 25521962889
+
+      - name: Install test prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes autopkgtest qemu-system-x86 tree
+
+      - name: Build autopkgtest runner image
+        run: autopkgtest-buildvm-ubuntu-cloud --release noble --verbose --cpus $(nproc) --output ${{ github.workspace }}
+
+      - name: Run autopkgtest
+        run: |
+          echo "Binary packages download path content:"
+          tree ${{ steps.download-binary-packages.outputs.download-path }}
+
+          autopkgtest --no-built-binaries --apt-upgrade \
+            --env=REGULAR_TESTS_IGNORE_NU1102_ERRORS=1 --env=REGULAR_TESTS_TOOLCHAINS_CI=1 \
+            --copy=${{ steps.download-binary-packages.outputs.download-path }}:/home/ubuntu/dotnet-packages \
+            --setup-commands="sudo apt-get install --yes /home/ubuntu/dotnet-packages/*.deb" \
+            dotnet10_10.0.109-10.0.9-0ubuntu1~24.04.1.dsc -- \
+              qemu -cpus=$(nproc) ${{ github.workspace }}/autopkgtest-noble-amd64.img
