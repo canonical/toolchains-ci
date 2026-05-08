@@ -281,6 +281,7 @@ jobs:
   test-source-package:
     runs-on: ubuntu-latest
     if: always()
+    needs: build-source-package
     strategy:
       fail-fast: false
       matrix:
