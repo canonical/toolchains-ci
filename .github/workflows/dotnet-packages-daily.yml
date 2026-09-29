@@ -12,7 +12,6 @@ jobs:
       matrix:
         ubuntu-version:
           - "26.04:resolute"
-          - "25.10:questing"
           - "24.04:noble"
         dotnet-git-branch:
           # - "main" # .NET 11 packaging still not available
@@ -64,11 +63,15 @@ jobs:
       # -------------------------------------------------------------------------------------------------
       # This is only temporary while https://github.com/canonical/flamenco/pull/9 is reviewed and merged.
       # Ideally, this should be replaced with a snap install from the store.
+      #
+      # Uses the branch from https://github.com/canonical/flamenco/pull/11 (stacked on PR #10 and PR #9),
+      # which works around snapd denying openat2 (LP: #2168888). Without it, core24's tar fails to extract
+      # the orig tarball inside the snap with "Cannot mkdir/open: Permission denied".
       - name: Checkout flamenco repository
         uses: actions/checkout@v6
         with:
           repository: canonical/flamenco
-          ref: feat/external-sources-2
+          ref: fix/openat2-seccomp-workaround
           path: flamenco
 
       - name: Build flamenco
@@ -198,13 +201,14 @@ jobs:
   build-source-package:
     name: Build .NET source package
     runs-on: [ self-hosted, linux, x64, noble, xlarge ]
+    # Run even if some prepare legs failed; legs whose source package is missing fail at download.
+    if: ${{ !cancelled() }}
     needs: prepare-source-package
     strategy:
       fail-fast: false
       matrix:
         ubuntu-release:
           - "resolute"
-          - "questing"
           - "noble"
         dotnet-source-packages:
           - "dotnet10"
@@ -280,14 +284,13 @@ jobs:
 
   test-source-package:
     runs-on: ubuntu-latest
-    if: always()
+    if: ${{ !cancelled() }}
     needs: build-source-package
     strategy:
       fail-fast: false
       matrix:
         ubuntu-release:
           - "resolute"
-          - "questing"
           - "noble"
         dotnet-source-packages:
           - "dotnet10"
