@@ -262,12 +262,97 @@ jobs:
           echo "Creating schroot"
           sg sbuild -c 'mk-sbuild ${{ matrix.ubuntu-release }}'
 
+      # -------------------------------------------------------------------------------------------------
+      # Temporary workaround for LP: #2163034 (resolute only).
+      #
+      # resolute ships libunwind 1.8.3, which has a race in its address-validation pipe
+      # (https://github.com/libunwind/libunwind/issues/715). Ubuntu's amd64 .NET links the system
+      # libunwind, so the bootstrap SDK randomly aborts with "Internal CLR error. (0x80131506)" /
+      # exit code 134 while compiling F#. The fix (upstream PR #993) is not in any libunwind release
+      # yet, so we rebuild resolute's libunwind with it and make it available to the dotnet build
+      # chroot. noble is unaffected (libunwind 1.6.2).
+      #
+      # Remove these steps once a fixed libunwind is published in resolute. The "Check libunwind"
+      # step below will start failing when the archive version supersedes ours, as a reminder.
+      - name: Build patched libunwind
+        if: matrix.ubuntu-release == 'resolute'
+        env:
+          LIBUNWIND_BASE_VERSION: "1.8.3-0ubuntu1"
+          LIBUNWIND_PATCHED_VERSION: "1.8.3-0ubuntu1.1~ci1"
+          DEBFULLNAME: Ubuntu Toolchains CI
+          DEBEMAIL: noreply@canonical.com
+        run: |
+          set -euo pipefail
+          WORK_DIR="${RUNNER_TEMP}/libunwind"
+          OUT_DIR="${WORK_DIR}/out"
+          rm -rf "${WORK_DIR}"
+          mkdir -p "${OUT_DIR}"
+          # Marker used by "Check libunwind used by the build" to ignore stale sbuild logs.
+          touch "${RUNNER_TEMP}/libunwind-start"
+          cd "${WORK_DIR}"
+
+          pull-lp-source libunwind "${LIBUNWIND_BASE_VERSION}"
+          cd "libunwind-${LIBUNWIND_BASE_VERSION%-*}"
+
+          cp "${{ github.workspace }}/dotnet/patches/libunwind/fix-address-validator-pipe-race.patch" debian/patches/
+          echo "fix-address-validator-pipe-race.patch" >> debian/patches/series
+          dch --newversion "${LIBUNWIND_PATCHED_VERSION}" \
+            --distribution resolute --force-distribution \
+            "Make the address-validation pipe thread-local (upstream PR #993) to fix spurious unw_step() failures that abort .NET with 0x80131506 (LP: #2163034)."
+          # Ubuntu's dpkg-source rejects an "ubuntu" version unless Maintainer: is an Ubuntu address.
+          update-maintainer
+
+          # Applies the new patch to the tree and builds the .dsc next to it.
+          dpkg-source --build .
+          cd ..
+
+          sg sbuild -c \
+            "sbuild --verbose --dist=resolute --build-dir='${OUT_DIR}' \
+            '${WORK_DIR}/libunwind_${LIBUNWIND_PATCHED_VERSION}.dsc'"
+
+          # libunwind-dev must come along: it depends on libunwind8 (= same version), so passing
+          # only libunwind8 would make apt fall back to the archive's unpatched pair.
+          EXTRA_ARGS=""
+          for pkg in libunwind8 libunwind-dev; do
+            deb="${OUT_DIR}/${pkg}_${LIBUNWIND_PATCHED_VERSION}_amd64.deb"
+            test -f "${deb}" || { echo "::error::Expected ${deb} was not built"; ls -l "${OUT_DIR}"; exit 1; }
+            EXTRA_ARGS+=" --extra-package=${deb}"
+          done
+          echo "SBUILD_EXTRA_ARGS=${EXTRA_ARGS}" >> "$GITHUB_ENV"
+          echo "LIBUNWIND_PATCHED_VERSION=${LIBUNWIND_PATCHED_VERSION}" >> "$GITHUB_ENV"
+      # End of temporary libunwind workaround.
+      # -------------------------------------------------------------------------------------------------
+
       - name: Build source package
         run: |
+          # SBUILD_EXTRA_ARGS is only set on resolute, by "Build patched libunwind".
           sg sbuild -c \
             "sbuild \
             --extra-repository='deb [trusted=yes] http://ppa.launchpadcontent.net/dotnet/backports/ubuntu ${{ matrix.ubuntu-release }} main' \
+            ${SBUILD_EXTRA_ARGS:-} \
             --verbose --dist=${{ matrix.ubuntu-release }} ${{ github.workspace }}/${{ matrix.dotnet-source-packages }}_*.dsc"
+
+      # Part of the temporary libunwind workaround above. Runs even if the build failed, so a
+      # failure can be attributed correctly (patched libunwind in use or not).
+      - name: Check libunwind used by the build
+        if: ${{ !cancelled() && matrix.ubuntu-release == 'resolute' }}
+        run: |
+          set -euo pipefail
+          LOG=$(find "${HOME}/sbuild/logs" -name '${{ matrix.dotnet-source-packages }}_*.build' \
+            -newer "${RUNNER_TEMP}/libunwind-start" -printf '%T@ %p\n' 2>/dev/null \
+            | sort -rn | head -n 1 | cut -d' ' -f2- || true)
+          if [ -z "${LOG}" ]; then
+            echo "::warning::No sbuild log found for ${{ matrix.dotnet-source-packages }}; cannot check libunwind version."
+            exit 0
+          fi
+          echo "sbuild log: ${LOG}"
+          grep -E "Unpacking libunwind(8|-dev)" "${LOG}" || true
+          if grep -qE "Unpacking libunwind8:amd64 \(${LIBUNWIND_PATCHED_VERSION:-unset}\)" "${LOG}"; then
+            echo "Build chroot used patched libunwind8 ${LIBUNWIND_PATCHED_VERSION}."
+          else
+            echo "::error::Build chroot did NOT use patched libunwind8 ${LIBUNWIND_PATCHED_VERSION:-<not built>}. If resolute now ships a fixed libunwind, remove the temporary libunwind workaround."
+            exit 1
+          fi
 
       - name: List generated files
         run: |
