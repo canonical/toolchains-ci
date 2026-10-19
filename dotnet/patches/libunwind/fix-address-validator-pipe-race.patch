@@ -2,19 +2,19 @@ Description: mi: make the address-validation pipe thread-local
  _mem_validate_pipe was a process-global pipe whose lazy initialisation was
  guarded by an atomic_flag. A thread losing the test-and-set race could read()
  from fd -1, get EBADF and call _open_pipe(), closing the shared descriptors
- while other threads were writing to them. unw_step() then fails spuriously;
- in .NET (which links the system libunwind on Ubuntu amd64) this aborts the
- process with "Fatal error. Internal CLR error. (0x80131506)".
+ while other threads were writing to them, so unw_step() fails spuriously.
+ .NET on Ubuntu amd64 links the system libunwind and aborts with
+ "Fatal error. Internal CLR error. (0x80131506)" when this happens.
  .
- Give each thread its own pipe and drop the global initialisation flag.
- This is the Gaddress_validator.c part of upstream PR #993; the rest of that PR
- (_Thread_local -> thread_local rename and threads.h detection) is not needed.
-Author: libunwind upstream
-Origin: upstream, https://github.com/libunwind/libunwind/pull/993
+ Backport of the src/mi/Gaddress_validator.c change from the upstream fix,
+ using the existing _Thread_local keyword instead of thread_local, which
+ avoids the unrelated build-system changes that came with it.
+Author: Matt Turner <mattst88@gmail.com>
+Origin: backport, https://github.com/libunwind/libunwind/commit/346fefe1845c528541fc0b6e3b5dada259b11598
 Bug: https://github.com/libunwind/libunwind/issues/715
-Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+bug/2163034
-Forwarded: not-needed
-Last-Update: 2026-10-13
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/libunwind/+bug/2163034
+Applied-Upstream: 346fefe1845c528541fc0b6e3b5dada259b11598
+Last-Update: 2026-10-15
 ---
 --- a/src/mi/Gaddress_validator.c
 +++ b/src/mi/Gaddress_validator.c
