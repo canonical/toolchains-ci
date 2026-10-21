@@ -256,9 +256,12 @@ jobs:
           echo "Contents of /etc/schroot/sbuild/fstab:"
           cat /etc/schroot/sbuild/fstab
 
-          # Add ubuntu to the sbuild group and set up the schroot.
-          echo "Adding user 'ubuntu' to 'sbuild' group and setting up schroot."
-          sudo usermod -aG sbuild $USER
+          # GARM runners start the job as an account that shares ubuntu's UID.
+          # $USER therefore says "runner", while sg resolves the caller from the
+          # UID and gets "ubuntu". Add the name sg will actually check.
+          echo "Adding user '$(id -un)' to 'sbuild' group and setting up schroot."
+          sudo usermod -aG sbuild "$(id -un)"
+          getent group sbuild
           echo "Creating schroot"
           sg sbuild -c 'mk-sbuild ${{ matrix.ubuntu-release }}'
 
