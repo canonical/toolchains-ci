@@ -265,12 +265,94 @@ jobs:
           echo "Creating schroot"
           sg sbuild -c 'mk-sbuild ${{ matrix.ubuntu-release }}'
 
+      # -------------------------------------------------------------------------------------------------
+      # Temporary workaround for LP: #2163034.
+      #
+      # libunwind 1.8.x (resolute and later ship 1.8.3) has a race in its address-validation pipe
+      # (https://github.com/libunwind/libunwind/issues/715). Ubuntu's .NET links the system libunwind,
+      # so the bootstrap SDK randomly aborts with "Internal CLR error. (0x80131506)" / exit code 134
+      # while compiling F#. The upstream fix is not in any libunwind release yet, so when the target
+      # release ships an affected libunwind, the build chroot gets libunwind from a PPA carrying the
+      # fix (dotnet/patches/libunwind/fix-address-validator-pipe-race.patch). Older releases, such as
+      # noble (libunwind 1.6.2), are unaffected and build as before.
+      #
+      # Remove this step, LIBUNWIND_REPO in "Build source package" and the "Check libunwind" step once
+      # a fixed libunwind is published. The check starts failing when the archive version supersedes
+      # the PPA one, as a reminder.
+      - name: Select libunwind for the build chroot
+        env:
+          LIBUNWIND_PPA: "http://ppa.launchpadcontent.net/rinconjr/libunwind-lp2163034/ubuntu"
+          # The race was introduced in libunwind 1.8.0 (upstream commit ec03043244).
+          LIBUNWIND_AFFECTED_FROM: "1.8.0~"
+        run: |
+          set -euo pipefail
+          RELEASE="${{ matrix.ubuntu-release }}"
+          ARCH="$(dpkg --print-architecture)"
+
+          # mk-sbuild names the chroot <release>-<arch>; its apt lists are current from creation.
+          ARCHIVE_VERSION=$(sg sbuild -c "schroot -c '${RELEASE}-${ARCH}' -- apt-cache policy libunwind8" \
+            | awk '/Candidate:/ {print $2}')
+          if [ -z "${ARCHIVE_VERSION}" ] || [ "${ARCHIVE_VERSION}" = "(none)" ]; then
+            echo "::error::Could not determine the libunwind8 version in the ${RELEASE}-${ARCH} chroot."
+            exit 1
+          fi
+          echo "libunwind8 in ${RELEASE}/${ARCH}: ${ARCHIVE_VERSION}"
+
+          if dpkg --compare-versions "${ARCHIVE_VERSION}" lt "${LIBUNWIND_AFFECTED_FROM}"; then
+            echo "Not affected by LP: #2163034; using the archive's libunwind."
+            exit 0
+          fi
+
+          if ! PPA_INDEX=$(curl -fsSL "${LIBUNWIND_PPA}/dists/${RELEASE}/main/binary-${ARCH}/Packages.xz" | xz -dc 2>/dev/null); then
+            echo "::error::libunwind8 ${ARCHIVE_VERSION} in ${RELEASE} is affected by LP: #2163034, but ${LIBUNWIND_PPA} has no ${RELEASE}/${ARCH} packages. Upload or copy the fixed libunwind for ${RELEASE} to the PPA."
+            exit 1
+          fi
+          PPA_VERSION=$(printf '%s\n' "${PPA_INDEX}" \
+            | awk '/^Package: / {pkg = $2} /^Version: / && pkg == "libunwind8" {print $2; exit}')
+          if [ -z "${PPA_VERSION}" ]; then
+            echo "::error::${LIBUNWIND_PPA} has a ${RELEASE}/${ARCH} index but no libunwind8 in it."
+            exit 1
+          fi
+
+          echo "libunwind8 ${ARCHIVE_VERSION} is affected by LP: #2163034; using ${PPA_VERSION} from the PPA."
+          echo "LIBUNWIND_REPO=--extra-repository='deb [trusted=yes] ${LIBUNWIND_PPA} ${RELEASE} main'" >> "$GITHUB_ENV"
+          echo "LIBUNWIND_PPA_VERSION=${PPA_VERSION}" >> "$GITHUB_ENV"
+      # End of temporary libunwind workaround (see also "Check libunwind used by the build").
+      # -------------------------------------------------------------------------------------------------
+
       - name: Build source package
         run: |
+          # Marker used by "Check libunwind used by the build" to ignore stale sbuild logs.
+          touch "${RUNNER_TEMP}/sbuild-start"
+
+          # LIBUNWIND_REPO is only set by "Select libunwind for the build chroot" when needed.
           sg sbuild -c \
             "sbuild \
             --extra-repository='deb [trusted=yes] http://ppa.launchpadcontent.net/dotnet/backports/ubuntu ${{ matrix.ubuntu-release }} main' \
+            ${LIBUNWIND_REPO:-} \
             --verbose --dist=${{ matrix.ubuntu-release }} ${{ github.workspace }}/${{ matrix.dotnet-source-packages }}_*.dsc"
+
+      # Part of the temporary libunwind workaround above. Only runs when the PPA was selected, and
+      # also when the build failed, so a failure can be attributed correctly.
+      - name: Check libunwind used by the build
+        if: ${{ !cancelled() && env.LIBUNWIND_PPA_VERSION != '' }}
+        run: |
+          set -euo pipefail
+          LOG=$(find "${HOME}/sbuild/logs" -name '${{ matrix.dotnet-source-packages }}_*.build' \
+            -newer "${RUNNER_TEMP}/sbuild-start" -printf '%T@ %p\n' 2>/dev/null \
+            | sort -rn | head -n 1 | cut -d' ' -f2- || true)
+          if [ -z "${LOG}" ]; then
+            echo "::warning::No sbuild log found for ${{ matrix.dotnet-source-packages }}; cannot check libunwind version."
+            exit 0
+          fi
+          echo "sbuild log: ${LOG}"
+          grep -E "Unpacking libunwind(8|-dev)" "${LOG}" || true
+          if grep -E "Unpacking libunwind8:[a-z0-9]+ " "${LOG}" | grep -F "(${LIBUNWIND_PPA_VERSION})" > /dev/null; then
+            echo "Build chroot used patched libunwind8 ${LIBUNWIND_PPA_VERSION} from the PPA."
+          else
+            echo "::error::Build chroot did NOT use patched libunwind8 ${LIBUNWIND_PPA_VERSION} from the PPA. If ${{ matrix.ubuntu-release }} now ships a fixed libunwind, remove the temporary libunwind workaround."
+            exit 1
+          fi
 
       - name: List generated files
         run: |
