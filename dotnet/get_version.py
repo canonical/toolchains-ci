@@ -10,19 +10,28 @@ from xml.etree import ElementTree
 
 
 def get_branch(repo_root: Path) -> str:
-    """Return the currently checked-out branch name of the given git repository."""
+    """Return the checked-out branch name, or the release tag when HEAD is detached on one."""
     result = subprocess.run(
         ["git", "-C", str(repo_root), "rev-parse", "--abbrev-ref", "HEAD"],
         capture_output=True,
         text=True,
         check=True,
     )
-    return result.stdout.strip()
+    branch = result.stdout.strip()
+    if branch == "HEAD":
+        tag = subprocess.run(
+            ["git", "-C", str(repo_root), "describe", "--tags", "--exact-match", "HEAD"],
+            capture_output=True,
+            text=True,
+        )
+        if tag.returncode == 0:
+            return tag.stdout.strip()
+    return branch
 
 
 def get_major_version(branch: str) -> int | None:
-    """Return the major version from branch name, or None for main/devel branches."""
-    match = re.match(r"^release/(\d+)\.\d+\.\d+xx$", branch)
+    """Return the major version from a release branch or tag, or None for main/devel branches."""
+    match = re.match(r"^release/(\d+)\.\d+\.\d+xx$", branch) or re.match(r"^v(\d+)\.\d+\.\d+$", branch)
     if match:
         return int(match.group(1))
     return None
