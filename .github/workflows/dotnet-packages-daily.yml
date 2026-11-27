@@ -13,11 +13,11 @@ jobs:
         ubuntu-version:
           - "26.04:resolute"
           - "24.04:noble"
-        dotnet-git-branch:
-          # - "main" # .NET 11 packaging still not available
+        dotnet-git-ref:
+          - "release/11.0.1xx"
           - "release/10.0.1xx"
-          - "release/9.0.1xx"
-          - "release/8.0.1xx"
+          - "v9.0.124"
+          - "v8.0.134"
     defaults:
       run:
         shell: bash
@@ -35,11 +35,11 @@ jobs:
           path: dotnet-source-build
 
       - name: Checkout dotnet/dotnet for version detection (.NET 9+)
-        if: matrix.dotnet-git-branch != 'release/8.0.1xx'
+        if: ${{ !startsWith(matrix.dotnet-git-ref, 'v8.') }}
         uses: actions/checkout@v6
         with:
           repository: dotnet/dotnet
-          ref: ${{ matrix.dotnet-git-branch }}
+          ref: ${{ matrix.dotnet-git-ref }}
           sparse-checkout: |
             src/sdk/eng/Versions.props
             src/runtime/eng/Versions.props
@@ -48,11 +48,11 @@ jobs:
           path: dotnet-dotnet
 
       - name: Checkout dotnet/dotnet for version detection (.NET 8)
-        if: matrix.dotnet-git-branch == 'release/8.0.1xx'
+        if: ${{ startsWith(matrix.dotnet-git-ref, 'v8.') }}
         uses: actions/checkout@v6
         with:
           repository: dotnet/dotnet
-          ref: ${{ matrix.dotnet-git-branch }}
+          ref: ${{ matrix.dotnet-git-ref }}
           sparse-checkout: |
             src/installer/eng/Versions.props
             src/runtime/eng/Versions.props
@@ -97,9 +97,10 @@ jobs:
           echo "ubuntu-version=${UBUNTU_VERSION}" >> "$GITHUB_OUTPUT"
           echo "ubuntu-release=${UBUNTU_RELEASE}" >> "$GITHUB_OUTPUT"
 
-          # Transform the branch name (e.g. "release/10.0.1xx") into a flamenco source name (e.g. "dotnet10").
-          DOTNET_SOURCE_PKG_NAME=${{ matrix.dotnet-git-branch }}
+          # Transform the git ref (e.g. "release/10.0.1xx" or "v9.0.124") into a flamenco source name (e.g. "dotnet10").
+          DOTNET_SOURCE_PKG_NAME=${{ matrix.dotnet-git-ref }}
           DOTNET_SOURCE_PKG_NAME=${DOTNET_SOURCE_PKG_NAME#release/} # Remove "release/" prefix
+          DOTNET_SOURCE_PKG_NAME=${DOTNET_SOURCE_PKG_NAME#v} # Remove the tag's "v" prefix
           DOTNET_SOURCE_PKG_NAME=${DOTNET_SOURCE_PKG_NAME%%.*} # Remove everything after the first dot
           DOTNET_SOURCE_PKG_NAME="dotnet${DOTNET_SOURCE_PKG_NAME}"
           echo "Derived DOTNET_SOURCE_PKG_NAME: ${DOTNET_SOURCE_PKG_NAME}"
@@ -159,7 +160,7 @@ jobs:
         with:
           build-id: ${{ steps.derive-versions.outputs.build-id }}
           deterministic: false
-          git-commitish: ${{ matrix.dotnet-git-branch }}
+          git-commitish: ${{ matrix.dotnet-git-ref }}
           git-repository: https://github.com/dotnet/dotnet
           source-version: ${{ steps.derive-versions.outputs.source-version }}
           vendor-name: 'Canonical Ltd.'
@@ -211,6 +212,7 @@ jobs:
           - "resolute"
           - "noble"
         dotnet-source-packages:
+          - "dotnet11"
           - "dotnet10"
           - "dotnet9"
           - "dotnet8"
@@ -378,6 +380,7 @@ jobs:
           - "resolute"
           - "noble"
         dotnet-source-packages:
+          - "dotnet11"
           - "dotnet10"
           - "dotnet9"
           - "dotnet8"
