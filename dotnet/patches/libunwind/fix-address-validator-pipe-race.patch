@@ -1,0 +1,44 @@
+Description: mi: make the address-validation pipe thread-local
+ _mem_validate_pipe was a process-global pipe whose lazy initialisation was
+ guarded by an atomic_flag. A thread losing the test-and-set race could read()
+ from fd -1, get EBADF and call _open_pipe(), closing the shared descriptors
+ while other threads were writing to them, so unw_step() fails spuriously.
+ .NET on Ubuntu amd64 links the system libunwind and aborts with
+ "Fatal error. Internal CLR error. (0x80131506)" when this happens.
+ .
+ Backport of the src/mi/Gaddress_validator.c change from the upstream fix,
+ using the existing _Thread_local keyword instead of thread_local, which
+ avoids the unrelated build-system changes that came with it.
+Author: Matt Turner <mattst88@gmail.com>
+Origin: backport, https://github.com/libunwind/libunwind/commit/346fefe1845c528541fc0b6e3b5dada259b11598
+Bug: https://github.com/libunwind/libunwind/issues/715
+Bug-Ubuntu: https://bugs.launchpad.net/ubuntu/+source/libunwind/+bug/2163034
+Applied-Upstream: 346fefe1845c528541fc0b6e3b5dada259b11598
+Last-Update: 2026-10-15
+---
+--- a/src/mi/Gaddress_validator.c
++++ b/src/mi/Gaddress_validator.c
+@@ -35,11 +35,9 @@ unw_address_is_valid(UNUSED unw_word_t a
+ 
+ #else /* !UNW_REMOTE_ONLY */
+ 
+-#include <stdatomic.h>
+-
+-
+-static atomic_flag _unw_address_validator_initialized = ATOMIC_FLAG_INIT;
+-static int _mem_validate_pipe[2] = {-1, -1};
++/* Each thread manages its own pipe so concurrent callers (including signal
++ * handlers) never race on closing or reopening another thread's fds. */
++static _Thread_local int _mem_validate_pipe[2] = {-1, -1};
+ 
+ #ifdef HAVE_PIPE2
+ static int
+@@ -104,7 +102,7 @@ _write_validate (unw_word_t addr)
+   int ret = -1;
+   ssize_t bytes = 0;
+ 
+-  if (unlikely (!atomic_flag_test_and_set(&_unw_address_validator_initialized)))
++  if (unlikely (_mem_validate_pipe[0] == -1))
+     {
+       if (_open_pipe () != 0)
+         {
